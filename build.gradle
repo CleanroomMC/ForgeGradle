@@ -9,7 +9,6 @@ buildscript {
         classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.11.0'
         classpath 'org.ow2.asm:asm:6.2.1'
         classpath 'org.ow2.asm:asm-tree:6.2.1'
-        classpath 'org.eclipse.jgit:org.eclipse.jgit:5.10.0.202012080955-r'
     }
 }
 
@@ -17,16 +16,13 @@ apply plugin: 'java'
 apply plugin: 'idea'
 apply plugin: 'eclipse'
 apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: "com.gradle.plugin-publish"
 apply plugin: 'license'
 
-project.ext {
-    GIT_INFO = gitInfo(rootProject.file('.'))
-    OLD_FORMAT = '2.3-SNAPSHOT'
-}
-
 group = 'net.minecraftforge.gradle'
-version = "${project.ext.GIT_INFO.tag}.${project.ext.GIT_INFO.offset}"
+version = '2.3-SNAPSHOT'
+//version = '2.2.1'
 archivesBaseName = 'ForgeGradle'
 targetCompatibility = '1.8'
 sourceCompatibility = '1.8'
@@ -35,7 +31,7 @@ repositories {
     mavenLocal()
     maven {
         name = "forge"
-        url = "https://maven.minecraftforge.net"
+        url = "https://maven.minecraftforge.net/"
     }
     maven {
         // because Srg2Source needs an eclipse dependency.
@@ -107,22 +103,10 @@ dependencies {
         exclude group: 'cpw.mods',            module: 'modlauncher'
     }
 
-    // Because Eclipse is dumb and decided to use dynamic versions with J8 incompatibility
-    shade('org.eclipse.platform:org.eclipse.core.resources:3.14.0') { force = true }
-    shade('org.eclipse.platform:org.eclipse.core.runtime:3.20.100') { force = true }
-    shade('org.eclipse.platform:org.eclipse.text:3.11.0') { force = true }
-    shade('org.eclipse.platform:org.eclipse.core.filesystem:1.7.700') { force = true }
-    shade('org.eclipse.platform:org.eclipse.equinox.common:3.14.100') { force = true }
-    shade('org.eclipse.platform:org.eclipse.core.contenttype:3.7.900') { force = true }
-    shade('org.eclipse.platform:org.eclipse.core.jobs:3.10.1100') { force = true }
-    shade('org.eclipse.platform:org.eclipse.equinox.registry:3.10.100') { force = true }
-    shade('org.eclipse.platform:org.eclipse.osgi:3.16.200') { force = true }
-    shade('org.eclipse.platform:org.eclipse.core.commands:3.9.800') { force = true }
-
     //Stuff used in the GradleStart classes
     compileOnly 'com.mojang:authlib:1.5.16'
     compileOnly('net.minecraft:launchwrapper:1.11'){
-       exclude group: 'org.ow2.asm'
+        exclude group: 'org.ow2.asm'
     }
 
     compileOnly 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.1.3-2'
@@ -141,9 +125,9 @@ sourceSets {
 }
 
 compileJava {
-	options.deprecation = true
-	//options.compilerArgs += ["-Werror"]
-	//options.compilerArgs += ["-Werror", "-Xlint:unchecked"]
+    options.deprecation = true
+    //options.compilerArgs += ["-Werror"]
+    //options.compilerArgs += ["-Werror", "-Xlint:unchecked"]
 }
 
 processResources {
@@ -153,6 +137,25 @@ processResources {
     }
     from(sourceSets.main.resources.srcDirs) {
         exclude 'forgegradle.version.txt'
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId archivesBaseName
+        }
+    }
+    // select the repositories you want to publish to
+    repositories {
+        maven {
+            url cleanroom_maven
+            credentials {
+                username cleanroom_user
+                password cleanroom_pass
+            }
+        }
     }
 }
 
@@ -262,7 +265,7 @@ task patchJDT(type: PatchJDTClasses) {
     configurations.shade.resolvedConfiguration.resolvedArtifacts.stream().filter { dep ->
         dep.name.equals('org.eclipse.jdt.core') || dep.name.equals('Srg2Source')
     }
-    .forEach { dep -> library dep.file }
+            .forEach { dep -> library dep.file }
     output file('build/patchJDT/patch_jdt.jar')
 }
 
@@ -272,12 +275,12 @@ jar {
     configurations.shade.each { dep ->
         /* I can use this again to find where dupes come from, so.. gunna just keep it here.
         logger.lifecycle(dep.toString())
-        project.zipTree(dep).visit { 
-            element -> 
+        project.zipTree(dep).visit {
+            element ->
                 def path = element.relativePath.toString()
                 if (path.contains('org/eclipse/core') && path.endsWith('.class'))
                     println "  $element.relativePath"
-            
+
         }
         */
         from(project.zipTree(dep)){
@@ -294,12 +297,12 @@ jar {
         attributes 'version':project.version
         attributes 'javaCompliance': project.targetCompatibility
         attributes 'group':project.group
-        attributes 'Implementation-Version': project.version + "-" + GIT_INFO.hash
+        attributes 'Implementation-Version': project.version + getGitHash()
     }
 }
 
 javadoc {
-	classpath += configurations.compileOnly
+    classpath += configurations.compileOnly
 
     // linked javadoc urls.. why not...
     options.addStringOption 'link', 'https://gradle.org/docs/current/javadoc/'
@@ -318,25 +321,23 @@ artifacts {
 }
 
 test {
-    // These tests are outdated, and I can't be arsed to fix them
-    exclude "*"
-    // if (project.hasProperty("filesmaven")) // disable this test when on the forge jenkins
-    //     exclude "**/ExtensionMcpMappingTest*"
+    if (project.hasProperty("filesmaven")) // disable this test when on the forge jenkins
+        exclude "**/ExtensionMcpMappingTest*"
 }
 
 license {
     ext {
         description = 'A Gradle plugin for the creation of Minecraft mods and MinecraftForge plugins.'
-        year = '2013-2019'
+        year = '2013-' + Calendar.getInstance().get(Calendar.YEAR)
         fullname = 'Minecraft Forge'
     }
     header rootProject.file('HEADER')
     include '**net/minecraftforge/gradle/**/*.java'
     excludes ([
-        '**net/minecraftforge/gradle/util/ZipFileTree.java',
-        '**net/minecraftforge/gradle/util/json/version/*',
-        '**net/minecraftforge/gradle/util/patching/Base64.java',
-        '**net/minecraftforge/gradle/util/patching/ContextualPatch.java'
+            '**net/minecraftforge/gradle/util/ZipFileTree.java',
+            '**net/minecraftforge/gradle/util/json/version/*',
+            '**net/minecraftforge/gradle/util/patching/Base64.java',
+            '**net/minecraftforge/gradle/util/patching/ContextualPatch.java'
     ])
     ignoreFailures false
     strictCheck true
@@ -376,111 +377,12 @@ pluginBundle {
     }
 }
 
-uploadArchives {
-    repositories.mavenDeployer {
-
-        dependsOn 'build'
-
-        if (System.env.MAVEN_USER)
-        {
-            repository(url: "https://maven.minecraftforge.net/") {
-                authentication(userName: System.env.MAVEN_USER, password: System.env.MAVEN_PASSWORD)
-            }
-        }
-        else
-        {
-            // local repo folder. Might wanna juset use  gradle install   if you wanans end it to maven-local
-            repository(url: 'file://localhost/' + project.file('repo').getAbsolutePath())
-        }
-
-
-        pom {
-            groupId = project.group
-            version = project.hasProperty('oldFormat') ? OLD_FORMAT : project.version
-            artifactId = project.archivesBaseName
-            project {
-                name project.archivesBaseName
-                packaging 'jar'
-                description 'Gradle plugin for Forge'
-                url 'https://github.com/MinecraftForge/ForgeGradle'
-
-                scm {
-                    url 'https://github.com/MinecraftForge/ForgeGradle'
-                    connection 'scm:git:git://github.com/MinecraftForge/ForgeGradle.git'
-                    developerConnection 'scm:git:git@github.com:MinecraftForge/ForgeGradle.git'
-                }
-
-                issueManagement {
-                    system 'github'
-                    url 'https://github.com/MinecraftForge/ForgeGradle/issues'
-                }
-
-                licenses {
-                    license {
-                        name 'Lesser GNU Public License, Version 2.1'
-                        url 'https://www.gnu.org/licenses/lgpl-2.1.html'
-                        distribution 'repo'
-                    }
-                }
-
-                developers {
-                    developer {
-                        id 'AbrarSyed'
-                        name 'Abrar Syed'
-                        roles { role 'developer' }
-                    }
-                    developer {
-                        id 'LexManos'
-                        name 'Lex Manos'
-                        roles { role 'developer' }
-                    }
-                }
-            }
-        }
-    }
-}
-
 // write out version so its convenient for doc deployment
 file('build').mkdirs()
 file('build/version.txt').text = version;
 
-def gitInfo(dir) {
-    String.metaClass.rsplit = { String del, int limit = -1 ->
-        def lst = new ArrayList()
-        def x = 0, idx
-        def tmp = delegate
-        while ((idx = tmp.lastIndexOf(del)) != -1 && (limit == -1 || x++ < limit)) {
-            lst.add(0, tmp.substring(idx + del.length(), tmp.length()))
-            tmp = tmp.substring(0, idx)
-        }
-        lst.add(0, tmp)
-        return lst
-    }
-
-    def git = null
-    try {
-        git = org.eclipse.jgit.api.Git.open(dir)
-    } catch (org.eclipse.jgit.errors.RepositoryNotFoundException e) {
-        return [
-                tag: '0.0',
-                offset: '0',
-                hash: '00000000',
-                branch: 'master',
-                commit: '0000000000000000000000',
-                abbreviatedId: '00000000'
-        ]
-    }
-    def desc = git.describe().setLong(true).setTags(true).call().rsplit('-', 2)
-    def head = git.repository.exactRef('HEAD')
-    def longBranch = head.symbolic ? head?.target?.name : null // matches Repository.getFullBranch() but returning null when on a detached HEAD
-
-    def ret = [:]
-    ret.tag = desc[0]
-    ret.offset = desc[1]
-    ret.hash = desc[2]
-    ret.branch = longBranch != null ? org.eclipse.jgit.lib.Repository.shortenRefName(longBranch) : null
-    ret.commit = org.eclipse.jgit.lib.ObjectId.toString(head.objectId)
-    ret.abbreviatedId = head.objectId.abbreviate(8).name()
-
-    return ret
+def getGitHash() {
+    def process = 'git rev-parse --short HEAD'.execute()
+    process.waitFor()
+    return '-' + (process.exitValue() ? 'unknown' : process.text.trim())
 }
